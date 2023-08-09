@@ -1,13 +1,12 @@
 import http from "k6/http";
 import { sleep } from "k6";
-// import { faker } from '@faker-js/faker';
-import faker from 'https://cdnjs.cloudflare.com/ajax/libs/Faker/3.1.0/faker.min.js';
-
+import { check } from "k6";
+import faker from "https://cdnjs.cloudflare.com/ajax/libs/Faker/3.1.0/faker.min.js";
 
 // Using json file
-import { SharedArray } from 'k6/data';
-const CREDENTIALS = new SharedArray('users collection', function () {
-  return JSON.parse(open('./users.json')).users;
+import { SharedArray } from "k6/data";
+const CREDENTIALS = new SharedArray("users collection", function () {
+  return JSON.parse(open("./users.json")).users;
 });
 
 // Using csv file
@@ -26,13 +25,13 @@ export let options = {
   vus: 10,
   iterations: 10,
   thresholds: {
-    http_req_failed: ['rate<0.01'], // http errors should be less than 1%
-    http_req_duration: ['p(95)<350'], // 95% of requests should be below 350ms
+    http_req_failed: ["rate<0.01"], // http errors should be less than 1%
+    http_req_duration: ["p(95)<350"], // 95% of requests should be below 350ms
   },
 };
 
 // Login function
-function loginAndGetAuthToken(user,credentials) {
+function loginAndGetAuthToken(user, credentials) {
   const loginPayload = {
     username: credentials.username,
     password: credentials.password,
@@ -49,7 +48,11 @@ function loginAndGetAuthToken(user,credentials) {
       headers: loginHeaders,
     }
   );
-  writeStatus(user, '/login', loginResponse.status);
+  check(loginResponse, {
+    "Verify Login Response Body": (r) => r.body.includes("token"),
+    "Verify Login Response Code": (r) => r.status === 201,
+  });
+  writeStatus(user, "/login", loginResponse.status);
 
   return loginResponse.json().token;
 }
@@ -58,14 +61,12 @@ function loginAndGetAuthToken(user,credentials) {
 function writeStatus(user, endpoint, status) {
   let consoleStatus = `User ${user}: ${endpoint} Response Status: ${status}`;
   console.log(consoleStatus);
-} 
+}
 
 // Payload Generator using faker
 export const payloadDummy = () => ({
-  name : faker.name.firstName()
-})
-
-
+  name: faker.name.firstName(),
+});
 
 // main function
 export default function () {
@@ -79,16 +80,24 @@ export default function () {
   let authToken;
   for (const endpoint of ENDPOINTS) {
     if (endpointRequiresAuth(endpoint)) {
-      authToken = loginAndGetAuthToken(__VU,credentials);
+      authToken = loginAndGetAuthToken(__VU, credentials);
       const resourceHeaders = {
         Authorization: `Bearer ${authToken}`,
       };
       const resourceResponse = http.get(`${BASE_URL}${endpoint}`, {
         headers: resourceHeaders,
       });
+      check(resourceResponse, {
+        "Verify Customers Response Body": (r) => r.body.includes("OK"),
+        "Verify Customers Response Code": (r) => r.status === 200,
+      });
       writeStatus(__VU, endpoint, resourceResponse.status);
     } else if (endpoint === "/vehicles") {
       const resourceResponse = http.get(`${BASE_URL}${endpoint}`);
+      check(resourceResponse, {
+        "Verify Vehicles Response Body": (r) => r.body.includes("OK"),
+        "Verify Vehicles Response Code": (r) => r.status === 200,
+      });
       writeStatus(__VU, endpoint, resourceResponse.status);
       const vehicles = resourceResponse.json().data;
 
@@ -103,21 +112,25 @@ export default function () {
           vehicleDetailsResponse.status
         );
       }
-    } else if (endpoint === "/brands"){
+    } else if (endpoint === "/brands") {
       const resourceResponse = http.get(`${BASE_URL}${endpoint}`);
+      check(resourceResponse, {
+        "Verify Brands Response Body": (r) => r.body.includes("OK"),
+        "Verify Brands Response Code": (r) => r.status === 200,
+      });
       writeStatus(__VU, endpoint, resourceResponse.status);
 
-      // POST using faker
-      authToken = loginAndGetAuthToken(__VU,credentials);
-      const resourceHeaders = {
-        Authorization: `Bearer ${authToken}`,
-      };
-      const payload = JSON.stringify(payloadDummy());
-      const postResponse = http.post(`${BASE_URL}${endpoint}`,payload,{
-        headers: resourceHeaders,
-      });
-      console.log(`User ${__VU}: ${endpoint} Faker Data POST Response Status: ${postResponse.status}`)
+      // // POST using faker
+      // authToken = loginAndGetAuthToken(__VU,credentials);
+      // const resourceHeaders = {
+      //   Authorization: `Bearer ${authToken}`,
+      // };
+      // const payload = JSON.stringify(payloadDummy());
+      // const postResponse = http.post(`${BASE_URL}${endpoint}`,payload,{
+      //   headers: resourceHeaders,
+      // });
+      // console.log(`User ${__VU}: ${endpoint} Faker Data POST Response Status: ${postResponse.status}`)
     }
-    sleep(2)
+    sleep(2);
   }
 }
