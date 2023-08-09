@@ -1,0 +1,1 @@
+K6_BROWSER_ENABLED=true k6 run k6-browser/main.js
