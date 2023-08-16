@@ -4,32 +4,46 @@ import { check } from "k6";
 import faker from "https://cdnjs.cloudflare.com/ajax/libs/Faker/3.1.0/faker.min.js";
 import {config} from "./config.js"
 
-// Using json file
-import { SharedArray } from "k6/data";
-const CREDENTIALS = new SharedArray("users collection", function () {
-  return JSON.parse(open("./users.json")).users;
-});
-
-// Using csv file
-// import papaparse from '../libs/papaparse.js';
-// import { SharedArray } from 'k6/data';
-// const CREDENTIALS = new SharedArray('another data name', function () {
-//   // Load CSV file
-//   return papaparse.parse(open('./users.csv'), { header: true }).data;
-// });
-
 const BASE_URL = "http://localhost:8888";
 const ENDPOINTS = ["/customers", "/brands", "/vehicles"];
 
 // Configuration on K6
 export let options = {
-  vus: config.vus,
-  iterations: config.iterations,
-  thresholds: config.thresholds,
+  executor: config.executor,
+  stages: config.stages 
 };
 
+// Payload Generator using faker
+export const payloadCredential = () => ({
+  username: faker.name.firstName(),
+  password: "password"
+});
+
+// Registration function
+function registFunc () {
+  const credentials = payloadCredential()
+  const registHeaders = {
+    "Content-Type": "application/json",
+  };
+
+  const registResponse = http.post(
+    `${BASE_URL}/register`,
+    JSON.stringify(credentials),
+    {
+      headers: registHeaders,
+    }
+  );
+  check(registResponse, {
+    "Verify Regist Response Body": (r) => r.body.includes(`${credentials.username} has been registered.`),
+    "Verify Regist Response Code": (r) => r.status === 201,
+  });
+  writeStatus("", "/register", registResponse.status);
+  return credentials
+}
+
 // Login function
-function loginAndGetAuthToken(user, credentials) {
+function loginAndGetAuthToken(user) {
+  const credentials = registFunc()
   const loginPayload = {
     username: credentials.username,
     password: credentials.password,
@@ -61,15 +75,8 @@ function writeStatus(user, endpoint, status) {
   console.log(consoleStatus);
 }
 
-// Payload Generator using faker
-export const payloadDummy = () => ({
-  name: faker.name.firstName(),
-});
-
 // main function
 export default function () {
-  const userIndex = __VU - 1;
-  const credentials = CREDENTIALS[userIndex];
 
   // Check if the current endpoint requires authentication
   const endpointRequiresAuth = (endpoint) =>
@@ -78,7 +85,7 @@ export default function () {
   let authToken;
   for (const endpoint of ENDPOINTS) {
     if (endpointRequiresAuth(endpoint)) {
-      authToken = loginAndGetAuthToken(__VU, credentials);
+      authToken = loginAndGetAuthToken(__VU);
       const resourceHeaders = {
         Authorization: `Bearer ${authToken}`,
       };
@@ -117,17 +124,6 @@ export default function () {
         "Verify Brands Response Code": (r) => r.status === 200,
       });
       writeStatus(__VU, endpoint, resourceResponse.status);
-
-      // // POST using faker
-      // authToken = loginAndGetAuthToken(__VU,credentials);
-      // const resourceHeaders = {
-      //   Authorization: `Bearer ${authToken}`,
-      // };
-      // const payload = JSON.stringify(payloadDummy());
-      // const postResponse = http.post(`${BASE_URL}${endpoint}`,payload,{
-      //   headers: resourceHeaders,
-      // });
-      // console.log(`User ${__VU}: ${endpoint} Faker Data POST Response Status: ${postResponse.status}`)
     }
     sleep(2);
   }
