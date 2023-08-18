@@ -10,40 +10,11 @@ const ENDPOINTS = ["/customers", "/brands", "/vehicles"];
 // Configuration on K6
 export let options = {
   executor: config.executor,
-  stages: config.stages 
+  stages: config.stages
 };
 
-// Payload Generator using faker
-export const payloadCredential = () => ({
-  username: faker.name.firstName(),
-  password: "password"
-});
-
-// Registration function
-function registFunc () {
-  const credentials = payloadCredential()
-  const registHeaders = {
-    "Content-Type": "application/json",
-  };
-
-  const registResponse = http.post(
-    `${BASE_URL}/register`,
-    JSON.stringify(credentials),
-    {
-      headers: registHeaders,
-    }
-  );
-  check(registResponse, {
-    "Verify Regist Response Body": (r) => r.body.includes(`${credentials.username} has been registered.`),
-    "Verify Regist Response Code": (r) => r.status === 201,
-  });
-  writeStatus("", "/register", registResponse.status);
-  return credentials
-}
-
 // Login function
-function loginAndGetAuthToken(user) {
-  const credentials = registFunc()
+function loginAndGetAuthToken(user, credentials) {
   const loginPayload = {
     username: credentials.username,
     password: credentials.password,
@@ -75,28 +46,23 @@ function writeStatus(user, endpoint, status) {
   console.log(consoleStatus);
 }
 
+// Payload Generator using faker
+export const payloadDummy = () => ({
+  name: faker.name.firstName(),
+});
+
 // main function
 export default function () {
+  const userIndex = __VU - 1;
+  const credentials = CREDENTIALS[userIndex];
 
   // Check if the current endpoint requires authentication
   const endpointRequiresAuth = (endpoint) =>
     endpoint !== "/brands" && endpoint !== "/vehicles";
 
-  let authToken;
+  // let authToken;
   for (const endpoint of ENDPOINTS) {
     if (endpointRequiresAuth(endpoint)) {
-      authToken = loginAndGetAuthToken(__VU);
-      const resourceHeaders = {
-        Authorization: `Bearer ${authToken}`,
-      };
-      const resourceResponse = http.get(`${BASE_URL}${endpoint}`, {
-        headers: resourceHeaders,
-      });
-      check(resourceResponse, {
-        "Verify Customers Response Body": (r) => r.body.includes("OK"),
-        "Verify Customers Response Code": (r) => r.status === 200,
-      });
-      writeStatus(__VU, endpoint, resourceResponse.status);
     } else if (endpoint === "/vehicles") {
       const resourceResponse = http.get(`${BASE_URL}${endpoint}`);
       check(resourceResponse, {
